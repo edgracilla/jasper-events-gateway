@@ -1,0 +1,36 @@
+{
+  "name": "jasper-events-gateway",
+  "description": "Gateway Plugin to ingest events forwarded by Jasper through it's Push API.",
+  "version": "1.0.0",
+  "author": "Reekoh, Inc.",
+  "main": "app.js",
+  "scripts": {
+    "test": "gulp test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Reekoh/jasper-events-gateway"
+  },
+  "dependencies": {
+    "async": "^1.5.2",
+    "body-parser": "^1.15.2",
+    "express": "^4.14.0",
+    "helmet": "^2.2.0",
+    "hpp": "^0.2.1",
+    "lodash.isempty": "^4.4.0",
+    "xml2js": "^0.4.17",
+    "xml2json": "^0.10.0"
+  },
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "gulp-cli": "^1.2.1",
+    "gulp-jshint": "^2.0.1",
+    "gulp-json-lint": "^0.1.0",
+    "gulp-mocha": "^3.0.1",
+    "gulp-plumber": "^1.1.0",
+    "mocha": "^3.0.2",
+    "request": "^2.75.0",
+    "should": "^11.1.0"
+  },
+  "license": "LGPL-3.0"
+}
