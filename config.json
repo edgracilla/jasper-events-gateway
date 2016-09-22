@@ -1,0 +1,15 @@
+{
+  "url": {
+	"label": "URL",
+	"type": "String",
+	"required": false,
+	"default": "/events",
+	"help": "(Optional) The path where events will get POSTed to. Default: /events"
+  },
+  "sharedSecret": {
+	"label": "Push API Shared Secret",
+	"type": "Password",
+	"required": false,
+	"help": "(Optional) When supplied, all data will be verified the specified value."
+  }
+}
