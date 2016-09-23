@@ -77,15 +77,17 @@ platform.once('ready', function (options) {
 					done();
 			},
 			(done) => {
-				parse(reqObj, done);
+				parse(reqObj.data, {
+					trim: true,
+					normalize: true,
+					explicitRoot: false,
+					explicitArray: false,
+					ignoreAttrs: true
+				}, done);
 			},
 			(eventData, done) => {
-				let data = eventData[Object.keys(eventData)[0]];
-
-				delete data.xmlns;
-
-				reqObj.device = data.iccid;
-				reqObj.data = data;
+				reqObj.device = eventData.iccid;
+				reqObj.data = eventData;
 				done();
 			},
 			(done) => {
