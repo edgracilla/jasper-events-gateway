@@ -2,7 +2,6 @@
 'use strict'
 
 const async = require('async')
-const amqp = require('amqplib')
 const should = require('should')
 const Broker = require('../node_modules/reekoh/lib/broker.lib')
 
@@ -13,14 +12,12 @@ const OUTPUT_PIPES = 'demo.outpipe1,demo.outpipe2'
 const COMMAND_RELAYS = 'demo.relay1,demo.relay2'
 
 let conf = {
-  url: '/events',
-  port: PORT
+  port: PORT,
+  url: '/events'
 }
 
 let _app = null
-let _conn = null
 let _broker = null
-let _channel = null
 
 describe('Gateway', function () {
   before('init', () => {
@@ -31,19 +28,10 @@ describe('Gateway', function () {
     process.env.CONFIG = JSON.stringify(conf)
 
     _broker = new Broker() // tester broker
-
-    amqp.connect(BROKER).then((conn) => {
-      _conn = conn
-      return conn.createChannel()
-    }).then((channel) => {
-      _channel = channel
-    }).catch((err) => {
-      console.log(err)
-    })
   })
 
   after('terminate', function () {
-    _conn.close()
+
   })
 
   describe('#start', function () {

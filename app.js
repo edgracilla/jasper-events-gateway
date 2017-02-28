@@ -70,7 +70,6 @@ plugin.once('ready', function () {
       },
       (done) => {
         plugin.requestDeviceInfo(reqObj.device).then((deviceInfo) => {
-
           if (isEmpty(deviceInfo)) {
             return plugin.log(JSON.stringify({
               title: 'Jasper Events Gateway - Access Denied. Unauthorized Device',
