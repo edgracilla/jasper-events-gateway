@@ -6,7 +6,7 @@ const isEmpty = require('lodash.isempty')
 
 let server = null
 
-plugin.once('ready', function (options) {
+plugin.once('ready', function () {
   let hpp = require('hpp')
   let parse = require('xml2js').parseString
   let async = require('async')
@@ -16,7 +16,7 @@ plugin.once('ready', function (options) {
   let express = require('express')
   let bodyParser = require('body-parser')
 
-  options = plugin.config
+  let options = plugin.config
 
   if (isEmpty(options.url)) {
     options.url = config.url.default
