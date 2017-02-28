@@ -1,161 +1,139 @@
-'use strict';
+'use strict'
 
-var isEmpty  = require('lodash.isempty'),
-	platform = require('./platform'),
-	server;
+const reekoh = require('reekoh')
+const plugin = new reekoh.plugins.Gateway()
+const isEmpty = require('lodash.isempty')
 
-/**
- * Emitted when the platform shuts down the plugin. The Gateway should perform cleanup of the resources on this event.
- */
-platform.once('close', function () {
-	let d = require('domain').create();
+let server = null
 
-	d.once('error', function (error) {
-		console.error(error);
-		platform.handleException(error);
-		platform.notifyClose();
-		d.exit();
-	});
+plugin.once('ready', function (options) {
+  let hpp = require('hpp')
+  let parse = require('xml2js').parseString
+  let async = require('async')
+  let helmet = require('helmet')
+  let crypto = require('crypto')
+  let config = require('./config.json')
+  let express = require('express')
+  let bodyParser = require('body-parser')
 
-	d.run(function () {
-		server.close(() => {
-			server.removeAllListeners();
-			platform.notifyClose();
-			d.exit();
-		});
-	});
-});
+  options = plugin.config
 
-/**
- * Emitted when the platform bootstraps the plugin. The plugin should listen once and execute its init process.
- * Afterwards, platform.notifyReady() should be called to notify the platform that the init process is done.
- * @param {object} options The parameters or options. Specified through config.json. Gateways will always have port as option.
- */
-platform.once('ready', function (options) {
-	let hpp        = require('hpp'),
-		parse      = require('xml2js').parseString,
-		async      = require('async'),
-		helmet     = require('helmet'),
-		crypto     = require('crypto'),
-		config     = require('./config.json'),
-		express    = require('express'),
-		bodyParser = require('body-parser');
+  if (isEmpty(options.url)) {
+    options.url = config.url.default
+  } else {
+    options.url = (options.url.startsWith('/')) ? options.url : `/${options.url}`
+  }
 
-	if (isEmpty(options.url))
-		options.url = config.url.default;
-	else
-		options.url = (options.url.startsWith('/')) ? options.url : `/${options.url}`;
+  let app = express()
 
-	var app = express();
+  app.use(bodyParser.urlencoded({
+    extended: true
+  }))
 
-	app.use(bodyParser.urlencoded({
-		extended: true
-	}));
+  app.disable('x-powered-by')
+  app.use(helmet.xssFilter({setOnOldIE: true}))
+  app.use(helmet.frameguard('deny'))
+  app.use(helmet.ieNoOpen())
+  app.use(helmet.noSniff())
+  app.use(hpp())
 
-	// For security
-	app.disable('x-powered-by');
-	app.use(helmet.xssFilter({setOnOldIE: true}));
-	app.use(helmet.frameguard('deny'));
-	app.use(helmet.ieNoOpen());
-	app.use(helmet.noSniff());
-	app.use(hpp());
+  app.post((options.url.startsWith('/')) ? options.url : `/${options.url}`, (req, res) => {
+    let reqObj = req.body
 
-	app.post((options.url.startsWith('/')) ? options.url : `/${options.url}`, (req, res) => {
-		let reqObj = req.body;
+    if (isEmpty(reqObj)) return res.sendStatus(400)
 
-		if (isEmpty(reqObj)) return res.sendStatus(400);
+    async.waterfall([
+      (done) => {
+        if (isEmpty(options.sharedSecret)) return done()
 
-		async.waterfall([
-			(done) => {
-				if (isEmpty(options.sharedSecret)) return done();
+        let hash = crypto.createHash('sha256').update(reqObj.timestamp).digest('base64')
 
-				let hash = crypto.createHash('sha256').update(reqObj.timestamp).digest('base64');
+        if (hash !== reqObj.signature) {
+          done(new Error('Invalid event signature.'))
+        } else {
+          done()
+        }
+      },
+      (done) => {
+        parse(reqObj.data, {
+          trim: true,
+          normalize: true,
+          explicitRoot: false,
+          explicitArray: false,
+          ignoreAttrs: true
+        }, done)
+      },
+      (eventData, done) => {
+        reqObj.device = eventData.iccid
+        reqObj.data = eventData
+        done()
+      },
+      (done) => {
+        plugin.requestDeviceInfo(reqObj.device).then((deviceInfo) => {
 
-				if (hash !== reqObj.signature)
-					done(new Error('Invalid event signature.'));
-				else
-					done();
-			},
-			(done) => {
-				parse(reqObj.data, {
-					trim: true,
-					normalize: true,
-					explicitRoot: false,
-					explicitArray: false,
-					ignoreAttrs: true
-				}, done);
-			},
-			(eventData, done) => {
-				reqObj.device = eventData.iccid;
-				reqObj.data = eventData;
-				done();
-			},
-			(done) => {
-				platform.requestDeviceInfo(reqObj.device, (error, requestId) => {
-					if (error) return done(error);
+          if (isEmpty(deviceInfo)) {
+            return plugin.log(JSON.stringify({
+              title: 'Jasper Events Gateway - Access Denied. Unauthorized Device',
+              device: reqObj.device
+            }))
+          }
 
-					platform.once(requestId, (deviceInfo) => {
-						if (deviceInfo) {
-							platform.processData(reqObj.device, JSON.stringify(reqObj));
+          return plugin.pipe(reqObj).then(() => {
+            return plugin.log(JSON.stringify({
+              title: 'Jasper Events Gateway - Data Received',
+              device: reqObj.device,
+              data: reqObj
+            })).then(() => {
+              plugin.emit('data.ok')
+              done()
+            })
+          }).catch(done)
+        }).catch(done)
+      }
+    ], (error) => {
+      if (error) {
+        plugin.logException(error)
+        if (error.message === 'Invalid event signature.') {
+          return res.sendStatus(403)
+        }
+      }
+      res.sendStatus(200)
+    })
+  })
 
-							platform.log(JSON.stringify({
-								title: 'Jasper Events Gateway - Data Received',
-								data: reqObj
-							}));
-						}
-						else {
-							platform.log(JSON.stringify({
-								title: 'Jasper Events Gateway - Access Denied. Unauthorized Device',
-								device: reqObj.device
-							}));
-						}
+  app.use((error, req, res, next) => {
+    plugin.logException(error)
 
-						done();
-					});
-				});
-			}
-		], (error) => {
-			if (error) {
-				platform.handleException(error);
+    res.sendStatus(500)
+  })
 
-				if (error.message === 'Invalid event signature.')
-					return res.sendStatus(403);
-			}
+  app.use((req, res) => {
+    res.sendStatus(404)
+  })
 
-			res.sendStatus(200);
-		});
-	});
+  server = require('http').Server(app)
 
-	app.use((error, req, res, next) => {
-		platform.handleException(error);
+  server.once('error', function (error) {
+    console.error('Jasper Events Gateway Error', error)
+    plugin.logException(error)
 
-		res.sendStatus(500);
-	});
+    setTimeout(() => {
+      server.close(() => {
+        server.removeAllListeners()
+        process.exit()
+      })
+    }, 5000)
+  })
 
-	app.use((req, res) => {
-		res.sendStatus(404);
-	});
+  server.once('close', () => {
+    plugin.log(`Jasper Events Gateway closed on port ${options.port}`)
+  })
 
-	server = require('http').Server(app);
+  server.listen(options.port, () => {
+    plugin.log(`Jasper Events Gateway has been initialized on port ${options.port}`)
+    plugin.emit('init')
+  })
+})
 
-	server.once('error', function (error) {
-		console.error('Jasper Events Gateway Error', error);
-		platform.handleException(error);
+module.exports = plugin
 
-		setTimeout(() => {
-			server.close(() => {
-				server.removeAllListeners();
-				process.exit();
-			});
-		}, 5000);
-	});
-
-	server.once('close', () => {
-		platform.log(`Jasper Events Gateway closed on port ${options.port}`);
-	});
-
-	server.listen(options.port, () => {
-		platform.notifyReady();
-		platform.log(`Jasper Events Gateway has been initialized on port ${options.port}`);
-	});
-});
